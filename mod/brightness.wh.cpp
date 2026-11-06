@@ -2,7 +2,7 @@
 // @id              brightness
 // @name            Monitor Brightness
 // @description     Monitor brightness next to the taskbar clock: per-monitor sliders, hotkeys, dimming when idle
-// @version         0.1.0
+// @version         0.1.1
 // @author          Hyeon
 // @include         explorer.exe
 // @architecture    x86-64
@@ -2133,7 +2133,7 @@ void IdleTick() {
 // The window: the monitors and the settings, as a flyout over the widget
 // ============================================================================
 
-enum class Page { kMain, kSettings };
+enum class Page { kMain, kSettings, kConfirmOff };
 
 struct PanelState {
     HWND taskbar = nullptr;
@@ -2516,10 +2516,7 @@ wux::UIElement BuildHead(Page page) {
             SavePrefs();
         });
         row.Children().Append(InColumn(link, 1));
-        auto screenOff = MakeButton(Kind::kGhost, kGlyphPower, L"", false, [] {
-            ClosePanel();
-            if (HWND w = g_workerWnd) PostMessageW(w, kMsgScreenOff, 0, 0);
-        });
+        auto screenOff = MakeButton(Kind::kGhost, kGlyphPower, L"", false, [] { ShowPage(Page::kConfirmOff); });
         SetTip(screenOff.root, T(L"화면 끄기", L"Turn the screens off"));
         row.Children().Append(InColumn(screenOff.root, 2));
         auto gear = MakeButton(Kind::kGhost, kGlyphSettings, L"", false, [] { ShowPage(Page::kSettings); });
@@ -2540,8 +2537,35 @@ wux::UIElement BuildHead(Page page) {
     });
     back.root.VerticalAlignment(wux::VerticalAlignment::Center);
     row.Children().Append(back.root);
-    row.Children().Append(InColumn(Text(T(L"밝기 설정", L"Brightness settings"), 13, c.fg, 600), 1));
+    row.Children().Append(InColumn(Text(page == Page::kSettings ? T(L"밝기 설정", L"Brightness settings")
+                                                                : T(L"화면 끄기", L"Turn the screens off"),
+                                        13, c.fg, 600),
+                                   1));
     return row;
+}
+
+// The screens go dark at once, so the head's power button asks first.
+wux::UIElement BuildConfirmOff() {
+    const Palette& c = *g_panel->c;
+    auto page = VStack(0);
+    auto ask = PanelOf({OptionRow(Glyph(kGlyphPower, 14, c.muted), T(L"정말 끄시겠어요?", L"Turn the screens off?"),
+                                  T(L"모든 모니터 화면을 끕니다. 마우스나 키보드를 쓰면 다시 켜집니다.",
+                                    L"Every monitor goes dark. The mouse or keyboard turns them back on."),
+                                  {})});
+    ask.Margin({0, 8, 0, 0});
+    page.Children().Append(ask);
+    auto buttons = HStack(8);
+    buttons.HorizontalAlignment(wux::HorizontalAlignment::Right);
+    buttons.Margin({0, 12, 0, 0});
+    buttons.Children().Append(MakeButton(Kind::kGhost, nullptr, T(L"취소", L"Cancel"), false, [] {
+                                  ShowPage(Page::kMain);
+                              }).root);
+    buttons.Children().Append(MakeButton(Kind::kSolid, kGlyphPower, T(L"끄기", L"Turn off"), false, [] {
+                                  ClosePanel();
+                                  if (HWND w = g_workerWnd) PostMessageW(w, kMsgScreenOff, 0, 0);
+                              }).root);
+    page.Children().Append(buttons);
+    return page;
 }
 
 void ShowPage(Page page) {
@@ -2550,7 +2574,9 @@ void ShowPage(Page page) {
     g_c = p.c;
     p.page = page;
     ReleaseHandlers();
-    wux::UIElement content = page == Page::kMain ? BuildMain() : BuildSettings();
+    wux::UIElement content = page == Page::kMain       ? BuildMain()
+                             : page == Page::kSettings ? BuildSettings()
+                                                       : BuildConfirmOff();
     p.headHost.Child(BuildHead(page));
     p.pageHost.Child(content);
 }
