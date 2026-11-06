@@ -2,7 +2,7 @@
 // @id              brightness
 // @name            Monitor Brightness
 // @description     Monitor brightness next to the taskbar clock: per-monitor sliders, hotkeys, dimming when idle
-// @version         0.1.1
+// @version         0.1.2
 // @author          Hyeon
 // @include         explorer.exe
 // @architecture    x86-64
@@ -2144,11 +2144,19 @@ struct PanelState {
     std::set<std::wstring> open;  // monitors whose contrast and power are shown
     std::map<std::wstring, Slider> sliders, contrasts;
     std::vector<std::wstring> listed;  // ids on the page, to tell when to rebuild it
+    std::wstring offId;                // the monitor the confirm page turns off; empty = every screen
 };
 std::unique_ptr<PanelState> g_panel;
 uint64_t g_panelClosedAt = 0;
 
 void ShowPage(Page page);
+
+// Turning screens off asks first; `id` names one monitor, empty means every screen.
+void ConfirmOff(const std::wstring& id) {
+    if (!g_panel) return;
+    g_panel->offId = id;
+    ShowPage(Page::kConfirmOff);
+}
 
 // "은" or "는" after a name, by how its last letter is read.
 PCWSTR Topic(const std::wstring& name) {
@@ -2202,7 +2210,7 @@ wux::FrameworkElement BuildMonitorRow(const Mon& m) {
         }
         auto act = HStack(10);
         auto off = MakeButton(Kind::kSolid, kGlyphPower, T(L"이 모니터 끄기", L"Turn this monitor off"), true,
-                              [id] { QueueWrite(id, What::kPower, 0); });
+                              [id] { ConfirmOff(id); });
         act.Children().Append(off.root);
         act.Children().Append(Text(T(L"전원 버튼으로 다시 켭니다", L"Its power button turns it on"), 12, c.faint));
         more.Children().Append(act);
@@ -2516,7 +2524,7 @@ wux::UIElement BuildHead(Page page) {
             SavePrefs();
         });
         row.Children().Append(InColumn(link, 1));
-        auto screenOff = MakeButton(Kind::kGhost, kGlyphPower, L"", false, [] { ShowPage(Page::kConfirmOff); });
+        auto screenOff = MakeButton(Kind::kGhost, kGlyphPower, L"", false, [] { ConfirmOff(L""); });
         SetTip(screenOff.root, T(L"화면 끄기", L"Turn the screens off"));
         row.Children().Append(InColumn(screenOff.root, 2));
         auto gear = MakeButton(Kind::kGhost, kGlyphSettings, L"", false, [] { ShowPage(Page::kSettings); });
@@ -2538,20 +2546,27 @@ wux::UIElement BuildHead(Page page) {
     back.root.VerticalAlignment(wux::VerticalAlignment::Center);
     row.Children().Append(back.root);
     row.Children().Append(InColumn(Text(page == Page::kSettings ? T(L"밝기 설정", L"Brightness settings")
-                                                                : T(L"화면 끄기", L"Turn the screens off"),
+                                                                : g_panel->offId.empty() ? T(L"화면 끄기", L"Turn the screens off")
+                                                                 : T(L"이 모니터 끄기", L"Turn this monitor off"),
                                         13, c.fg, 600),
                                    1));
     return row;
 }
 
-// The screens go dark at once, so the head's power button asks first.
+// Screens go dark at once, so both power buttons ask first.
 wux::UIElement BuildConfirmOff() {
     const Palette& c = *g_panel->c;
+    std::wstring id = g_panel->offId, name;
+    for (auto& m : g_mons)
+        if (m.id == id) name = m.name;
     auto page = VStack(0);
-    auto ask = PanelOf({OptionRow(Glyph(kGlyphPower, 14, c.muted), T(L"정말 끄시겠어요?", L"Turn the screens off?"),
-                                  T(L"모든 모니터 화면을 끕니다. 마우스나 키보드를 쓰면 다시 켜집니다.",
-                                    L"Every monitor goes dark. The mouse or keyboard turns them back on."),
-                                  {})});
+    auto ask = PanelOf({OptionRow(
+        Glyph(kGlyphPower, 14, c.muted), T(L"정말 끄시겠어요?", L"Turn it off?"),
+        id.empty() ? T(L"모든 모니터 화면을 끕니다. 마우스나 키보드를 쓰면 다시 켜집니다.",
+                       L"Every monitor goes dark. The mouse or keyboard turns them back on.")
+        : g_korean ? Format(L"%s 화면을 끕니다. 모니터의 전원 버튼으로 다시 켭니다.", name.c_str())
+                   : Format(L"%s goes off. Its power button turns it back on.", name.c_str()),
+        {})});
     ask.Margin({0, 8, 0, 0});
     page.Children().Append(ask);
     auto buttons = HStack(8);
@@ -2560,7 +2575,12 @@ wux::UIElement BuildConfirmOff() {
     buttons.Children().Append(MakeButton(Kind::kGhost, nullptr, T(L"취소", L"Cancel"), false, [] {
                                   ShowPage(Page::kMain);
                               }).root);
-    buttons.Children().Append(MakeButton(Kind::kSolid, kGlyphPower, T(L"끄기", L"Turn off"), false, [] {
+    buttons.Children().Append(MakeButton(Kind::kSolid, kGlyphPower, T(L"끄기", L"Turn off"), false, [id] {
+                                  if (!id.empty()) {
+                                      QueueWrite(id, What::kPower, 0);
+                                      ShowPage(Page::kMain);
+                                      return;
+                                  }
                                   ClosePanel();
                                   if (HWND w = g_workerWnd) PostMessageW(w, kMsgScreenOff, 0, 0);
                               }).root);
