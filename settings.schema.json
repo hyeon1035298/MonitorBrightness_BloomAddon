@@ -1,0 +1,36 @@
+{
+  "schema": 1,
+  "groups": [
+    {
+      "id": "pill",
+      "name": { "ko": "모양", "en": "Look" },
+      "items": [
+        {
+          "key": "pill.theme",
+          "type": "choice",
+          "default": "system",
+          "options": [
+            { "value": "system", "name": { "ko": "Windows 작업표시줄 테마", "en": "Windows taskbar theme" } },
+            { "value": "dark", "name": { "ko": "다크", "en": "Dark" } },
+            { "value": "light", "name": { "ko": "라이트", "en": "Light" } }
+          ],
+          "name": { "ko": "테마", "en": "Theme" },
+          "about": {
+            "ko": "위젯과 창의 라이트·다크. Bloom 애드온으로 쓰면 Bloom의 테마를 따릅니다",
+            "en": "Light or dark for the widget and its window. As a Bloom add-on it follows Bloom's theme"
+          }
+        },
+        {
+          "key": "pill.glass",
+          "type": "bool",
+          "default": true,
+          "name": { "ko": "유리 효과", "en": "Glass effect" },
+          "about": {
+            "ko": "끄면 창이 블러 없이 테마 색으로 칠해집니다",
+            "en": "When off, the window is filled in the theme's color without blur"
+          }
+        }
+      ]
+    }
+  ]
+}
