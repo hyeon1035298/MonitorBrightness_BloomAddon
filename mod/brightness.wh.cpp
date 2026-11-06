@@ -1206,11 +1206,26 @@ uint32_t TrayHover(const wux::FrameworkElement& e) {
     return e.ActualTheme() == wux::ElementTheme::Light ? 0x09000000 : 0x0FFFFFFF;
 }
 
-// Opens the window over the widget, or under it when the taskbar is at the top.
+// Opens the window over the widget, or under it when the taskbar is at the top, kGap clear
+// of the taskbar's edge rather than of the widget in its middle: the widget's distance to
+// that edge is measured in the taskbar's XAML root.
 void ShowFlyout(Widget& w, const wuxc::Flyout& flyout) {
+    constexpr double kGap = 8;
+    bool below = TaskbarOnTop(w.taskbar);
+    double toEdge = 0;
+    try {
+        if (auto root = w.root.XamlRoot()) {
+            auto box = w.root.TransformToVisual(nullptr).TransformBounds(
+                {0, 0, float(w.root.ActualWidth()), float(w.root.ActualHeight())});
+            toEdge = std::max(0.0, below ? root.Size().Height - (box.Y + box.Height) : double(box.Y));
+        }
+    } catch (...) {
+    }
     wuxc::Primitives::FlyoutShowOptions options;
-    options.Placement(TaskbarOnTop(w.taskbar) ? wuxc::Primitives::FlyoutPlacementMode::Bottom
-                                              : wuxc::Primitives::FlyoutPlacementMode::Top);
+    options.Placement(below ? wuxc::Primitives::FlyoutPlacementMode::Bottom : wuxc::Primitives::FlyoutPlacementMode::Top);
+    options.Position(wf::IReference<wf::Point>(wf::Point{
+        float(w.root.ActualWidth() / 2),
+        float(below ? w.root.ActualHeight() + toEdge + kGap : -(toEdge + kGap))}));
     flyout.ShowAt(w.root, options);
 }
 
