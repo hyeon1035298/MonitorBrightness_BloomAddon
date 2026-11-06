@@ -514,7 +514,16 @@ UINT RunMsg() {
     return msg;
 }
 
+// An auto-hiding taskbar stays out while the window is open on it, as it does for
+// Windows' own tray windows: the tray's hide check (timer 2, as TrayUI::_SetAutoHideTimer
+// sets it) skips its ticks then. While the taskbar is in front Windows keeps it out by
+// itself, so those ticks go on.
+constexpr UINT_PTR kTrayHideTimer = 2;
+HWND g_holdTaskbar;  // taskbar thread
+
 LRESULT CALLBACK TaskbarSubclass(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam, DWORD_PTR) {
+    if (msg == WM_TIMER && wParam == kTrayHideTimer && hwnd == g_holdTaskbar && GetForegroundWindow() != hwnd)
+        return 0;
     if (msg == RunMsg() && lParam) {
         try {
             (*(std::function<void()>*)lParam)();
@@ -527,6 +536,17 @@ LRESULT CALLBACK TaskbarSubclass(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
 }
 
 HWND g_subclassed;
+
+// Holds `taskbar` out (null lets go). Called on the taskbar thread.
+void HoldTaskbar(HWND taskbar) {
+    if (g_holdTaskbar == taskbar) return;
+    if (g_holdTaskbar && g_holdTaskbar != g_subclassed)
+        WindhawkUtils::RemoveWindowSubclassFromAnyThread(g_holdTaskbar, TaskbarSubclass);
+    g_holdTaskbar = nullptr;
+    if (taskbar && (taskbar == g_subclassed ||
+                    WindhawkUtils::SetWindowSubclassFromAnyThread(taskbar, TaskbarSubclass, 0)))
+        g_holdTaskbar = taskbar;
+}
 
 // Runs `work` on the window's thread and waits for it.
 bool RunOn(HWND hwnd, std::function<void()> work) {
@@ -2550,6 +2570,7 @@ void ClosePanel() {
     if (!g_panel) return;
     auto panel = std::move(g_panel);
     g_panelClosedAt = GetTickCount64();
+    HoldTaskbar(nullptr);
     ReleaseHandlers();
     try {
         if (panel->flyout) panel->flyout.Hide();
@@ -2564,6 +2585,7 @@ void TogglePanel(Widget& w) {
     }
     if (GetTickCount64() - g_panelClosedAt < 300) return;  // the press that just closed it
     CloseOtherFlyouts();
+    HoldTaskbar(w.taskbar);
     g_panel = std::make_unique<PanelState>();
     auto& p = *g_panel;
     p.taskbar = w.taskbar;
@@ -2597,6 +2619,7 @@ void TogglePanel(Widget& w) {
         if (g_panel && g_panel->flyout == sender.try_as<wuxc::Flyout>()) {
             g_panel.reset();
             g_panelClosedAt = GetTickCount64();
+            HoldTaskbar(nullptr);
             if (g_recording) {
                 g_recording = 0;
                 RegisterKeys();
