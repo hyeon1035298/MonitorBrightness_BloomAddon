@@ -220,9 +220,13 @@ FILETIME g_prefsStamp;  // prefs.json's last write time after our own last read 
 bool PrefsStamp(FILETIME& stamp);
 const std::wstring* PresentName(const std::wstring& id);  // a present monitor's current name
 
+// A nested object, or null. A parsed object hands its members out as JSON values, not as objects to cast.
+wdj::JsonObject ObjectOf(const wdj::IJsonValue& value) {
+    return value && value.ValueType() == wdj::JsonValueType::Object ? value.GetObject() : nullptr;
+}
+
 HotKey ReadKey(const wdj::JsonObject& obj, PCWSTR name, HotKey fallback) {
-    auto value = obj.TryLookup(name);
-    auto key = value ? value.try_as<wdj::JsonObject>() : nullptr;
+    auto key = ObjectOf(obj.TryLookup(name));
     if (!key) return fallback;
     HotKey k;
     k.mods = UINT(key.GetNamedNumber(L"mods", 0)) & (MOD_CONTROL | MOD_ALT | MOD_SHIFT | MOD_WIN);
@@ -263,10 +267,9 @@ void LoadPrefs() {
         p.idleOn = obj.GetNamedBoolean(L"idleOn", false);
         p.idleMinutes = std::clamp(int(obj.GetNamedNumber(L"idleMinutes", 5)), 1, 120);
         p.idleLevel = std::clamp(int(obj.GetNamedNumber(L"idleLevel", 20)), 0, 100);
-        auto value = obj.TryLookup(L"monitors");
-        if (auto mons = value ? value.try_as<wdj::JsonObject>() : nullptr) {
+        if (auto mons = ObjectOf(obj.TryLookup(L"monitors"))) {
             for (auto const& entry : mons) {
-                auto m = entry.Value().try_as<wdj::JsonObject>();
+                auto m = ObjectOf(entry.Value());
                 if (!m || p.monitors.size() >= kMaxMonitorPrefs) continue;
                 MonPref mp;
                 mp.lo = std::clamp(int(m.GetNamedNumber(L"lo", 0)), 0, 99);
@@ -2067,6 +2070,8 @@ void RegisterKeys() {
     if (g_recording) return;  // the combination being pressed must reach the field
     if (g_prefs.up.vk) g_keyBusy[0] = !RegisterHotKey(g_flyoutWnd, kKeyUp, g_prefs.up.mods, g_prefs.up.vk);
     if (g_prefs.down.vk) g_keyBusy[1] = !RegisterHotKey(g_flyoutWnd, kKeyDown, g_prefs.down.mods, g_prefs.down.vk);
+    Wh_Log(L"hotkeys %x+%x %x+%x, in use elsewhere: %d %d", g_prefs.up.mods, g_prefs.up.vk, g_prefs.down.mods,
+           g_prefs.down.vk, g_keyBusy[0], g_keyBusy[1]);
 }
 
 LRESULT CALLBACK FlyoutWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
@@ -2825,6 +2830,7 @@ void Tick() {
 void PollPrefs() {
     FILETIME stamp;
     if (g_unloading || !PrefsStamp(stamp) || CompareFileTime(&stamp, &g_prefsStamp) == 0) return;
+    Wh_Log(L"prefs.json changed; read again");
     LoadPrefs();
     for (auto& m : g_mons) m.value = FromHw(m, m.hw);
     if (!g_recording) RegisterKeys();
