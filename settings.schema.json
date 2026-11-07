@@ -2,32 +2,341 @@
   "schema": 1,
   "groups": [
     {
+      "id": "taskbar",
+      "name": {
+        "ko": "작업표시줄",
+        "en": "Taskbar",
+        "ja": "タスクバー",
+        "zh": "任务栏"
+      },
+      "items": [
+        {
+          "key": "taskbar.number",
+          "type": "choice",
+          "default": 0,
+          "file": "prefs.json",
+          "field": "pillNumber",
+          "name": {
+            "ko": "작업표시줄 숫자",
+            "en": "Number on the taskbar",
+            "ja": "タスクバーの数字",
+            "zh": "任务栏数字"
+          },
+          "options": [
+            {
+              "value": 0,
+              "name": {
+                "ko": "첫 모니터",
+                "en": "First monitor",
+                "ja": "最初のモニター",
+                "zh": "第一个显示器"
+              }
+            },
+            {
+              "value": 1,
+              "name": {
+                "ko": "평균",
+                "en": "Average",
+                "ja": "平均",
+                "zh": "平均"
+              }
+            }
+          ]
+        },
+        {
+          "key": "taskbar.wheelStep",
+          "type": "int",
+          "default": 5,
+          "file": "prefs.json",
+          "field": "wheelStep",
+          "name": {
+            "ko": "휠 한 칸 (%)",
+            "en": "One wheel notch (%)",
+            "ja": "ホイール 1 目盛り (%)",
+            "zh": "滚轮一格 (%)"
+          },
+          "min": 1,
+          "max": 25
+        },
+        {
+          "key": "taskbar.link",
+          "type": "bool",
+          "default": false,
+          "file": "prefs.json",
+          "field": "link",
+          "name": {
+            "ko": "모든 모니터 함께 조절",
+            "en": "All monitors together",
+            "ja": "全モニターの一括調整",
+            "zh": "所有显示器一起调节"
+          },
+          "about": {
+            "ko": "한 모니터를 바꾸면 창에 보이는 다른 모니터도 같은 밝기가 됩니다",
+            "en": "Changing one monitor sets every other monitor shown in the window to the same brightness",
+            "ja": "1 台のモニターを変えると、ウィンドウに表示されている他のモニターも同じ明るさになります",
+            "zh": "调节一个显示器时，窗口中显示的其他显示器也会设为相同亮度"
+          }
+        }
+      ]
+    },
+    {
+      "id": "ranges",
+      "name": {
+        "ko": "모니터별 범위",
+        "en": "Ranges per monitor",
+        "ja": "モニターごとの範囲",
+        "zh": "各显示器的范围"
+      },
+      "about": {
+        "ko": "창의 0과 100이 가리킬 하드웨어 밝기입니다",
+        "en": "The hardware brightness the window's 0 and 100 stand for",
+        "ja": "ウィンドウの 0 と 100 が指すハードウェアの明るさです",
+        "zh": "窗口中 0 和 100 对应的硬件亮度"
+      },
+      "items": [
+        {
+          "key": "ranges.monitors",
+          "type": "records",
+          "default": {},
+          "file": "prefs.json",
+          "field": "monitors",
+          "label": "name",
+          "name": {
+            "ko": "모니터별 범위",
+            "en": "Ranges per monitor",
+            "ja": "モニターごとの範囲",
+            "zh": "各显示器的范围"
+          },
+          "fields": [
+            {
+              "key": "lo",
+              "type": "int",
+              "default": 0,
+              "min": 0,
+              "max": 99,
+              "name": {
+                "ko": "최저 밝기 (%)",
+                "en": "Lowest (%)",
+                "ja": "最低の明るさ (%)",
+                "zh": "最低亮度 (%)"
+              }
+            },
+            {
+              "key": "hi",
+              "type": "int",
+              "default": 100,
+              "min": 1,
+              "max": 100,
+              "name": {
+                "ko": "최고 밝기 (%)",
+                "en": "Highest (%)",
+                "ja": "最高の明るさ (%)",
+                "zh": "最高亮度 (%)"
+              }
+            },
+            {
+              "key": "hidden",
+              "type": "bool",
+              "default": false,
+              "name": {
+                "ko": "창에서 숨기기",
+                "en": "Hidden in the window",
+                "ja": "ウィンドウで非表示",
+                "zh": "在窗口中隐藏"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "keys",
+      "name": {
+        "ko": "단축키",
+        "en": "Hotkeys",
+        "ja": "ショートカットキー",
+        "zh": "快捷键"
+      },
+      "items": [
+        {
+          "key": "keys.up",
+          "type": "hotkey",
+          "default": {
+            "mods": 3,
+            "vk": 38
+          },
+          "file": "prefs.json",
+          "field": "keyUp",
+          "name": {
+            "ko": "밝게",
+            "en": "Brighter",
+            "ja": "明るく",
+            "zh": "调亮"
+          }
+        },
+        {
+          "key": "keys.down",
+          "type": "hotkey",
+          "default": {
+            "mods": 3,
+            "vk": 40
+          },
+          "file": "prefs.json",
+          "field": "keyDown",
+          "name": {
+            "ko": "어둡게",
+            "en": "Dimmer",
+            "ja": "暗く",
+            "zh": "调暗"
+          }
+        },
+        {
+          "key": "keys.step",
+          "type": "int",
+          "default": 10,
+          "file": "prefs.json",
+          "field": "keyStep",
+          "name": {
+            "ko": "한 번에 (%)",
+            "en": "Per press (%)",
+            "ja": "1 回の変化量 (%)",
+            "zh": "每次变化 (%)"
+          },
+          "min": 1,
+          "max": 50
+        }
+      ]
+    },
+    {
+      "id": "idle",
+      "name": {
+        "ko": "유휴 시 어둡게",
+        "en": "Dim when idle",
+        "ja": "アイドル時に暗く",
+        "zh": "空闲时调暗"
+      },
+      "items": [
+        {
+          "key": "idle.on",
+          "type": "bool",
+          "default": false,
+          "file": "prefs.json",
+          "field": "idleOn",
+          "name": {
+            "ko": "유휴 시 어둡게",
+            "en": "Dim when idle",
+            "ja": "アイドル時に暗く",
+            "zh": "空闲时调暗"
+          },
+          "about": {
+            "ko": "입력이 오면 원래 밝기로 돌아갑니다. 동영상처럼 화면을 켜 두는 프로그램이 있으면 어둡게 하지 않습니다",
+            "en": "Any input brings the brightness back. Nothing dims while a program keeps the screen on, such as a video.",
+            "ja": "入力があると元の明るさに戻ります。動画のように画面をオンに保つプログラムがあるときは暗くしません。",
+            "zh": "有输入时恢复原来的亮度。有程序（如视频）保持屏幕常亮时不会调暗。"
+          }
+        },
+        {
+          "key": "idle.minutes",
+          "type": "int",
+          "default": 5,
+          "file": "prefs.json",
+          "field": "idleMinutes",
+          "name": {
+            "ko": "기다리는 시간(분)",
+            "en": "After (min)",
+            "ja": "待ち時間 (min)",
+            "zh": "等待时间 (min)"
+          },
+          "min": 1,
+          "max": 120
+        },
+        {
+          "key": "idle.level",
+          "type": "int",
+          "default": 20,
+          "file": "prefs.json",
+          "field": "idleLevel",
+          "name": {
+            "ko": "어둡게 할 밝기 (%)",
+            "en": "Dim to (%)",
+            "ja": "暗くする明るさ (%)",
+            "zh": "调暗到 (%)"
+          },
+          "min": 0,
+          "max": 100
+        }
+      ]
+    },
+    {
       "id": "pill",
-      "name": { "ko": "모양", "en": "Look" },
+      "name": {
+        "ko": "모양",
+        "en": "Look",
+        "ja": "外観",
+        "zh": "外观"
+      },
       "items": [
         {
           "key": "pill.theme",
           "type": "choice",
           "default": "system",
           "options": [
-            { "value": "system", "name": { "ko": "Windows 작업표시줄 테마", "en": "Windows taskbar theme" } },
-            { "value": "dark", "name": { "ko": "다크", "en": "Dark" } },
-            { "value": "light", "name": { "ko": "라이트", "en": "Light" } }
+            {
+              "value": "system",
+              "name": {
+                "ko": "Windows 작업표시줄 테마",
+                "en": "Windows taskbar theme",
+                "ja": "Windows タスクバーのテーマ",
+                "zh": "Windows 任务栏主题"
+              }
+            },
+            {
+              "value": "dark",
+              "name": {
+                "ko": "다크",
+                "en": "Dark",
+                "ja": "ダーク",
+                "zh": "深色"
+              }
+            },
+            {
+              "value": "light",
+              "name": {
+                "ko": "라이트",
+                "en": "Light",
+                "ja": "ライト",
+                "zh": "浅色"
+              }
+            }
           ],
-          "name": { "ko": "테마", "en": "Theme" },
+          "name": {
+            "ko": "테마",
+            "en": "Theme",
+            "ja": "テーマ",
+            "zh": "主题"
+          },
           "about": {
             "ko": "위젯과 창의 라이트·다크. Bloom 애드온으로 쓰면 Bloom의 테마를 따릅니다",
-            "en": "Light or dark for the widget and its window. As a Bloom add-on it follows Bloom's theme"
+            "en": "Light or dark for the widget and its window. As a Bloom add-on it follows Bloom's theme",
+            "ja": "ウィジェットとウィンドウのライト・ダーク。Bloom のアドオンとして使うと Bloom のテーマに従います",
+            "zh": "小组件及其窗口的浅色或深色。作为 Bloom 加载项使用时跟随 Bloom 的主题"
           }
         },
         {
           "key": "pill.glass",
           "type": "bool",
           "default": true,
-          "name": { "ko": "유리 효과", "en": "Glass effect" },
+          "name": {
+            "ko": "유리 효과",
+            "en": "Glass effect",
+            "ja": "ガラス効果",
+            "zh": "玻璃效果"
+          },
           "about": {
             "ko": "끄면 창이 블러 없이 테마 색으로 칠해집니다",
-            "en": "When off, the window is filled in the theme's color without blur"
+            "en": "When off, the window is filled in the theme's color without blur",
+            "ja": "オフにするとウィンドウをぼかさずテーマの色で塗ります",
+            "zh": "关闭后窗口不模糊，以主题颜色填充"
           }
         }
       ]

@@ -2,7 +2,7 @@
 // @id              brightness
 // @name            Monitor Brightness
 // @description     Monitor brightness next to the taskbar clock: per-monitor sliders, hotkeys, dimming when idle
-// @version         0.1.3
+// @version         0.2.0
 // @author          Hyeon
 // @include         explorer.exe
 // @architecture    x86-64
@@ -182,7 +182,7 @@ std::optional<wdj::JsonObject> ParseObject(const std::optional<std::wstring>& te
 }
 
 // ============================================================================
-// Preferences (prefs.json in the data folder, written by this mod only)
+// Preferences (prefs.json in the data folder, also read and written by Bloom)
 // ============================================================================
 
 struct HotKey {
@@ -195,6 +195,7 @@ struct HotKey {
 struct MonPref {
     int lo = 0, hi = 100;
     bool hidden = false;
+    std::wstring name;  // the monitor's name, kept for Bloom's settings page; not part of the range
     bool Plain() const { return lo == 0 && hi == 100 && !hidden; }
 };
 
@@ -212,6 +213,12 @@ struct Prefs {
 Prefs g_prefs;  // taskbar thread
 
 constexpr size_t kMaxMonitorPrefs = 32;
+
+FILETIME g_prefsStamp;  // prefs.json's last write time after our own last read or write
+
+// False when the file is missing.
+bool PrefsStamp(FILETIME& stamp);
+const std::wstring* PresentName(const std::wstring& id);  // a present monitor's current name
 
 HotKey ReadKey(const wdj::JsonObject& obj, PCWSTR name, HotKey fallback) {
     auto value = obj.TryLookup(name);
@@ -235,8 +242,16 @@ std::wstring PrefsPath() {
     return DataDir() + L"\\prefs.json";
 }
 
+bool PrefsStamp(FILETIME& stamp) {
+    WIN32_FILE_ATTRIBUTE_DATA data;
+    if (!GetFileAttributesExW(PrefsPath().c_str(), GetFileExInfoStandard, &data)) return false;
+    stamp = data.ftLastWriteTime;
+    return true;
+}
+
 void LoadPrefs() {
     Prefs p;
+    if (!PrefsStamp(g_prefsStamp)) g_prefsStamp = {};
     if (auto o = ParseObject(ReadText(PrefsPath()))) {
         auto& obj = *o;
         p.pillNumber = std::clamp(int(obj.GetNamedNumber(L"pillNumber", 0)), 0, 1);
@@ -257,6 +272,7 @@ void LoadPrefs() {
                 mp.lo = std::clamp(int(m.GetNamedNumber(L"lo", 0)), 0, 99);
                 mp.hi = std::clamp(int(m.GetNamedNumber(L"hi", 100)), mp.lo + 1, 100);
                 mp.hidden = m.GetNamedBoolean(L"hidden", false);
+                mp.name = std::wstring(m.GetNamedString(L"name", L""));
                 p.monitors[std::wstring(entry.Key())] = mp;
             }
         }
@@ -279,16 +295,22 @@ void SavePrefs() {
     obj.SetNamedValue(L"idleLevel", wdj::JsonValue::CreateNumberValue(p.idleLevel));
     wdj::JsonObject mons;
     for (auto& [id, mp] : p.monitors) {
-        if (mp.Plain()) continue;
+        const std::wstring* present = PresentName(id);
+        if (!present && mp.Plain()) continue;
         wdj::JsonObject m;
         m.SetNamedValue(L"lo", wdj::JsonValue::CreateNumberValue(mp.lo));
         m.SetNamedValue(L"hi", wdj::JsonValue::CreateNumberValue(mp.hi));
         m.SetNamedValue(L"hidden", wdj::JsonValue::CreateBooleanValue(mp.hidden));
+        m.SetNamedValue(L"name", wdj::JsonValue::CreateStringValue(present ? *present : mp.name));
         mons.SetNamedValue(id, m);
     }
     obj.SetNamedValue(L"monitors", mons);
     SHCreateDirectoryExW(nullptr, DataDir().c_str(), nullptr);
-    if (!WriteText(PrefsPath(), std::wstring(obj.Stringify()))) Wh_Log(L"prefs not written: %u", GetLastError());
+    if (WriteText(PrefsPath(), std::wstring(obj.Stringify()))) {
+        if (!PrefsStamp(g_prefsStamp)) g_prefsStamp = {};
+    } else {
+        Wh_Log(L"prefs not written: %u", GetLastError());
+    }
 }
 
 MonPref PrefOf(const std::wstring& id) {
@@ -1006,6 +1028,12 @@ struct Mon {
 };
 std::vector<Mon> g_mons;
 bool g_scanned = false;
+
+const std::wstring* PresentName(const std::wstring& id) {
+    for (auto& m : g_mons)
+        if (m.id == id) return &m.name;
+    return nullptr;
+}
 
 int ToHw(const Mon& m, int value) {
     MonPref p = PrefOf(m.id);
@@ -2772,16 +2800,37 @@ void OnMonitors(std::vector<MonView> list, uint64_t readAt) {
     }
     g_mons = std::move(next);
     g_scanned = true;
+    // Bloom's page lists the ranges by name: record every present monitor once.
+    bool named = false;
+    for (auto& m : g_mons) {
+        auto it = g_prefs.monitors.find(m.id);
+        if (it != g_prefs.monitors.end() && it->second.name == m.name) continue;
+        EditPref(m.id).name = m.name;
+        named = true;
+    }
+    if (named) SavePrefs();
     Wh_Log(L"%d monitors", int(g_mons.size()));
     PaintWidgets(true);
     RefreshMain();
 }
 
-winrt::Windows::System::DispatcherQueueTimer g_timer{nullptr};
+winrt::Windows::System::DispatcherQueueTimer g_timer{nullptr}, g_prefsTimer{nullptr};
 
 void Tick() {
     if (g_unloading) return;
     PlaceWidgets();
+}
+
+// prefs.json changed under us (Bloom's settings page): load it and redo what depends on it.
+void PollPrefs() {
+    FILETIME stamp;
+    if (g_unloading || !PrefsStamp(stamp) || CompareFileTime(&stamp, &g_prefsStamp) == 0) return;
+    LoadPrefs();
+    for (auto& m : g_mons) m.value = FromHw(m, m.hw);
+    if (!g_recording) RegisterKeys();
+    SetIdleInterval();
+    PaintWidgets(true);
+    if (g_panel && !g_recording) ShowPage(g_panel->page);
 }
 
 void Start() {
@@ -2803,10 +2852,14 @@ void Start() {
         if (!g_unloading) IdleTick();
     });
     SetIdleInterval();
+    g_prefsTimer = g_queue.CreateTimer();
+    g_prefsTimer.Interval(std::chrono::seconds(1));
+    g_prefsTimer.Tick([](auto&&, auto&&) { PollPrefs(); });
+    g_prefsTimer.Start();
 }
 
 void Stop() {
-    for (auto* timer : {&g_timer, &g_idleTimer}) {
+    for (auto* timer : {&g_timer, &g_idleTimer, &g_prefsTimer}) {
         if (*timer) {
             timer->Stop();
             *timer = nullptr;
