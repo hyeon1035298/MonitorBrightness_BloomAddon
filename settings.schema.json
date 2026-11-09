@@ -30,6 +30,21 @@
                 "en": "First monitor",
                 "ja": "最初のモニター",
                 "zh": "第一个显示器"
+              },
+              "easy": {
+                "name": { "ko": "첫 모니터", "en": "First monitor", "ja": "1 台目のモニター", "zh": "第一台显示器" },
+                "picture": {
+                  "shapes": [
+                    { "box": [3, 4, 28, 19], "r": 3, "alpha": 0.05 },
+                    { "box": [3, 4, 28, 19], "r": 3, "stroke": "ink", "alpha": 0.45 },
+                    { "box": [41, 4, 28, 19], "r": 3, "alpha": 0.05 },
+                    { "box": [41, 4, 28, 19], "r": 3, "stroke": "ink", "alpha": 0.45 },
+                    { "text": "70", "at": [17, 13.5], "width": 24, "size": 9, "fill": "accent" },
+                    { "text": "40", "at": [55, 13.5], "width": 24, "size": 9, "alpha": 0.55 },
+                    { "box": [1.5, 2.5, 31, 22], "r": 4, "stroke": "accent", "width": 1.5 },
+                    { "text": "70", "at": [36, 36], "size": 10, "fill": "accent" }
+                  ]
+                }
               }
             },
             {
@@ -39,9 +54,34 @@
                 "en": "Average",
                 "ja": "平均",
                 "zh": "平均"
+              },
+              "easy": {
+                "name": { "ko": "평균", "en": "Average", "ja": "平均", "zh": "平均" },
+                "picture": {
+                  "shapes": [
+                    { "box": [3, 4, 28, 19], "r": 3, "alpha": 0.05 },
+                    { "box": [3, 4, 28, 19], "r": 3, "stroke": "ink", "alpha": 0.45 },
+                    { "box": [41, 4, 28, 19], "r": 3, "alpha": 0.05 },
+                    { "box": [41, 4, 28, 19], "r": 3, "stroke": "ink", "alpha": 0.45 },
+                    { "text": "70", "at": [17, 13.5], "width": 24, "size": 9, "fill": "accent" },
+                    { "text": "40", "at": [55, 13.5], "width": 24, "size": 9, "fill": "accent" },
+                    { "box": [1.5, 2.5, 31, 22], "r": 4, "stroke": "accent", "width": 1.5 },
+                    { "box": [39.5, 2.5, 31, 22], "r": 4, "stroke": "accent", "width": 1.5 },
+                    { "text": "55", "at": [36, 36], "size": 10, "fill": "accent" }
+                  ]
+                }
               }
             }
-          ]
+          ],
+          "easy": {
+            "name": {
+              "ko": "작업표시줄에 보일 밝기",
+              "en": "Brightness on the taskbar",
+              "ja": "タスクバーに表示する明るさ",
+              "zh": "任务栏上显示的亮度"
+            },
+            "about": ""
+          }
         },
         {
           "key": "taskbar.wheelStep",
@@ -56,7 +96,16 @@
             "zh": "滚轮一格 (%)"
           },
           "min": 1,
-          "max": 25
+          "max": 25,
+          "easy": {
+            "name": { "ko": "휠 한 칸에", "en": "Per wheel notch", "ja": "ホイール 1 目盛りで", "zh": "滚轮每格" },
+            "about": {
+              "ko": "작업표시줄 아이콘 위에서 휠을 돌릴 때",
+              "en": "Turning the wheel over the taskbar icon",
+              "ja": "タスクバーのアイコンの上でホイールを回したとき",
+              "zh": "在任务栏图标上滚动滚轮时"
+            }
+          }
         },
         {
           "key": "taskbar.link",
@@ -75,6 +124,28 @@
             "en": "Changing one monitor sets every other monitor shown in the window to the same brightness",
             "ja": "1 台のモニターを変えると、ウィンドウに表示されている他のモニターも同じ明るさになります",
             "zh": "调节一个显示器时，窗口中显示的其他显示器也会设为相同亮度"
+          },
+          "easy": {
+            "name": { "ko": "모든 모니터 함께", "en": "All monitors together", "ja": "すべてのモニターをまとめて", "zh": "所有显示器一起" },
+            "about": {
+              "ko": "한 모니터를 바꾸면 다른 모니터도 같은 밝기가 됩니다",
+              "en": "Changing one sets the others to the same brightness",
+              "ja": "1 台を変えると、ほかのモニターも同じ明るさになります",
+              "zh": "调整一台时，其他显示器也变为相同亮度"
+            },
+            "thumb": {
+              "shapes": [
+                { "box": [3, 8, 21, 15], "r": 2.5, "alpha": 0.05 },
+                { "box": [3, 8, 21, 15], "r": 2.5, "stroke": "ink", "alpha": 0.45 },
+                { "box": [36, 8, 21, 15], "r": 2.5, "alpha": 0.05 },
+                { "box": [36, 8, 21, 15], "r": 2.5, "stroke": "ink", "alpha": 0.45 },
+                { "path": "M 25.5,15.5 H 34.5", "stroke": "accent", "width": 1.3 },
+                { "dot": [25.5, 15.5, 1.4], "fill": "accent" },
+                { "dot": [34.5, 15.5, 1.4], "fill": "accent" },
+                { "box": [10, 25, 7, 1.6], "r": 0.8, "alpha": 0.18 },
+                { "box": [43, 25, 7, 1.6], "r": 0.8, "alpha": 0.18 }
+              ]
+            }
           }
         }
       ]
@@ -147,7 +218,17 @@
             }
           ]
         }
-      ]
+      ],
+      "easy": {
+        "name": { "ko": "모니터마다 밝기 범위", "en": "Brightness range per monitor", "ja": "モニターごとの明るさの範囲", "zh": "每台显示器的亮度范围" },
+        "about": {
+          "ko": "밝기 0과 100이 모니터의 실제 밝기 어디를 가리킬지 정합니다",
+          "en": "Sets where 0 and 100 fall on each monitor's own brightness",
+          "ja": "明るさ 0 と 100 が、モニターの実際の明るさのどこに当たるかを決めます",
+          "zh": "设定亮度 0 和 100 对应显示器实际亮度的哪个位置"
+        },
+        "folded": true
+      }
     },
     {
       "id": "keys",
@@ -172,6 +253,15 @@
             "en": "Brighter",
             "ja": "明るく",
             "zh": "调亮"
+          },
+          "easy": {
+            "name": { "ko": "밝게", "en": "Brighter", "ja": "明るく", "zh": "调亮" },
+            "about": {
+              "ko": "누른 뒤 새 조합을 누르세요",
+              "en": "Click, then press a new combination",
+              "ja": "クリックしてから新しい組み合わせを押してください",
+              "zh": "单击后按下新的组合键"
+            }
           }
         },
         {
@@ -188,7 +278,8 @@
             "en": "Dimmer",
             "ja": "暗く",
             "zh": "调暗"
-          }
+          },
+          "easy": { "name": { "ko": "어둡게", "en": "Dimmer", "ja": "暗く", "zh": "调暗" }, "about": "" }
         },
         {
           "key": "keys.step",
@@ -203,7 +294,8 @@
             "zh": "每次变化 (%)"
           },
           "min": 1,
-          "max": 50
+          "max": 50,
+          "easy": { "name": { "ko": "한 번 누를 때", "en": "Per press", "ja": "1 回押すごとに", "zh": "每按一次" } }
         }
       ]
     },
@@ -233,6 +325,15 @@
             "en": "Any input brings the brightness back. Nothing dims while a program keeps the screen on, such as a video.",
             "ja": "入力があると元の明るさに戻ります。動画のように画面をオンに保つプログラムがあるときは暗くしません。",
             "zh": "有输入时恢复原来的亮度。有程序（如视频）保持屏幕常亮时不会调暗。"
+          },
+          "easy": {
+            "name": { "ko": "자리를 비우면 어둡게", "en": "Dim when away", "ja": "離席したら暗く", "zh": "离开时调暗" },
+            "about": {
+              "ko": "마우스나 키보드를 쓰면 원래대로 돌아옵니다",
+              "en": "It comes back as soon as the mouse or keyboard is used",
+              "ja": "マウスかキーボードを使うと元に戻ります",
+              "zh": "使用鼠标或键盘后恢复原样"
+            }
           }
         },
         {
@@ -248,7 +349,8 @@
             "zh": "等待时间 (min)"
           },
           "min": 1,
-          "max": 120
+          "max": 120,
+          "easy": { "name": { "ko": "얼마 뒤에", "en": "After", "ja": "変更後", "zh": "修改后" }, "when": { "key": "idle.on" } }
         },
         {
           "key": "idle.level",
@@ -263,9 +365,14 @@
             "zh": "调暗到 (%)"
           },
           "min": 0,
-          "max": 100
+          "max": 100,
+          "easy": {
+            "name": { "ko": "어둡게 할 밝기", "en": "Dim to", "ja": "暗くする明るさ", "zh": "调暗后的亮度" },
+            "when": { "key": "idle.on" }
+          }
         }
-      ]
+      ],
+      "easy": { "name": { "ko": "자리를 비우면 어둡게", "en": "Dim when away", "ja": "離席したら暗く", "zh": "离开时调暗" } }
     },
     {
       "id": "pill",
@@ -341,5 +448,6 @@
         }
       ]
     }
-  ]
+  ],
+  "easy": { "order": ["taskbar", "keys", "idle", "ranges"] }
 }
