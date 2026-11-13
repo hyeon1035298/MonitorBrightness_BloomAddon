@@ -370,6 +370,14 @@ wuxm::SolidColorBrush Brush(uint32_t argb) {
     return wuxm::SolidColorBrush(winrt::Windows::UI::Color{BYTE(argb >> 24), BYTE(argb >> 16), BYTE(argb >> 8), BYTE(argb)});
 }
 
+// A Thickness boxed by XAML itself. box_value boxes this XAML struct in this DLL, and a
+// resource dictionary that keeps the box would release it after the DLL is unloaded.
+wf::IInspectable XamlBox(wux::Thickness t) {
+    wuxc::Border b;
+    b.Padding(t);
+    return b.GetValue(wuxc::Border::PaddingProperty());
+}
+
 uint32_t WithAlpha(uint32_t argb, BYTE alpha) {
     return (argb & 0x00FFFFFF) | (uint32_t(alpha) << 24);
 }
@@ -1786,8 +1794,8 @@ void StyleTextBox(const wuxc::TextBox& box, const Palette& c) {
         res.Insert(box_value(key), Brush(argb));
     res.Insert(box_value(L"TextControlThemeMinHeight"), box_value(0.0));
     res.Insert(box_value(L"TextControlThemeMinWidth"), box_value(0.0));
-    res.Insert(box_value(L"TextControlThemePadding"), box_value(wux::Thickness{0, 0, 0, 0}));
-    res.Insert(box_value(L"TextControlBorderThemeThickness"), box_value(wux::Thickness{0, 0, 0, 0}));
+    res.Insert(box_value(L"TextControlThemePadding"), XamlBox(wux::Thickness{0, 0, 0, 0}));
+    res.Insert(box_value(L"TextControlBorderThemeThickness"), XamlBox(wux::Thickness{0, 0, 0, 0}));
 }
 
 wux::Input::InputScope NumberScope() {
