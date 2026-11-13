@@ -597,10 +597,12 @@ bool Post(std::function<void()> work) {
     g_pending++;
     bool queued = false;
     try {
-        queued = queue.TryEnqueue([work = std::move(work)] {
-            if (!g_unloading) {
+        queued = queue.TryEnqueue([work = std::move(work)]() mutable {
+            // What the work holds is let go of before the count drops, so Wh_ModUninit never
+            // returns while a destructor in this DLL is still to run on the taskbar thread.
+            if (auto run = std::move(work); !g_unloading) {
                 try {
-                    work();
+                    run();
                 } catch (...) {
                     Wh_Log(L"posted work failed: %08X", winrt::to_hresult());
                 }
@@ -1173,6 +1175,7 @@ struct MonIcon {
     wuxc::Canvas canvas{nullptr};
     wuxs::Rectangle body{nullptr}, fill{nullptr}, neck{nullptr}, base{nullptr};
     wuxc::TextBlock text{nullptr};
+    wux::FrameworkElement::Loaded_revoker loaded;
 
     void Build() {
         canvas = wuxc::Canvas();
@@ -1211,7 +1214,7 @@ struct MonIcon {
         text.FontWeight(winrt::Windows::UI::Text::FontWeights::Bold());
         canvas.Children().Append(text);
         // The pixel grid is known once the icon is on a taskbar.
-        canvas.Loaded([t = text](auto&&, auto&&) { PlaceText(t); });
+        loaded = canvas.Loaded(winrt::auto_revoke, [t = text](auto&&, auto&&) { PlaceText(t); });
     }
 
     static void PlaceText(const wuxc::TextBlock& t) { PlaceInk(t, kBodyX + kBodyW / 2, kBodyY + kBodyH / 2); }
@@ -1241,6 +1244,11 @@ struct Widget {
     const Palette* palette = nullptr;
     bool hover = false, fitted = false;
     int wheel = 0;  // part of a notch not yet used
+    // XAML may keep the root after it leaves the tray; its handlers live in this DLL.
+    wux::UIElement::PointerEntered_revoker entered;
+    wux::UIElement::PointerExited_revoker exited;
+    wux::UIElement::Tapped_revoker tapped;
+    wux::UIElement::PointerWheelChanged_revoker wheeled;
 };
 std::vector<std::unique_ptr<Widget>> g_widgets;  // taskbar thread
 void TogglePanel(Widget& w);
@@ -1356,19 +1364,19 @@ std::unique_ptr<Widget> BuildWidget(HWND taskbar) {
     w->icon.canvas.VerticalAlignment(wux::VerticalAlignment::Center);
     w->root.Children().Append(w->icon.canvas);
     Widget* raw = w.get();
-    w->root.PointerEntered([raw](auto&&, auto&&) {
+    w->entered = w->root.PointerEntered(winrt::auto_revoke, [raw](auto&&, auto&&) {
         raw->hover = true;
         PaintWidget(*raw, true);
     });
-    w->root.PointerExited([raw](auto&&, auto&&) {
+    w->exited = w->root.PointerExited(winrt::auto_revoke, [raw](auto&&, auto&&) {
         raw->hover = false;
         PaintWidget(*raw, true);
     });
-    w->root.Tapped([raw](auto&&, wux::Input::TappedRoutedEventArgs const& args) {
+    w->tapped = w->root.Tapped(winrt::auto_revoke, [raw](auto&&, wux::Input::TappedRoutedEventArgs const& args) {
         args.Handled(true);
         TogglePanel(*raw);
     });
-    w->root.PointerWheelChanged([raw](auto&&, wux::Input::PointerRoutedEventArgs const& args) {
+    w->wheeled = w->root.PointerWheelChanged(winrt::auto_revoke, [raw](auto&&, wux::Input::PointerRoutedEventArgs const& args) {
         args.Handled(true);
         int notches = Notches(raw->wheel, args.GetCurrentPoint(raw->root).Properties().MouseWheelDelta());
         if (notches) StepAll(notches * g_prefs.wheelStep);
@@ -1384,12 +1392,22 @@ void RemoveWidget(Widget& w) {
     }
 }
 
+// For a widget going for good: its handlers first, then off the tray.
+void DropWidget(Widget& w) {
+    w.entered.revoke();
+    w.exited.revoke();
+    w.tapped.revoke();
+    w.wheeled.revoke();
+    w.icon.loaded.revoke();
+    RemoveWidget(w);
+}
+
 // Every taskbar gets one; ones whose tray was rebuilt go in again.
 void PlaceWidgets() {
     auto taskbars = Taskbars();
     std::erase_if(g_widgets, [&](auto& w) {
         bool gone = std::ranges::find(taskbars, w->taskbar) == taskbars.end();
-        if (gone) RemoveWidget(*w);
+        if (gone) DropWidget(*w);
         return gone;
     });
     for (HWND hwnd : taskbars) {
@@ -2218,6 +2236,9 @@ struct PanelState {
     std::map<std::wstring, Slider> sliders, contrasts;
     std::vector<std::wstring> listed;  // ids on the page, to tell when to rebuild it
     std::wstring offId;                // the monitor the confirm page turns off; empty = every screen
+    // Revoked before Hide: Closed comes after it, by when an unload may have freed the handler.
+    wuxc::Primitives::FlyoutBase::Opened_revoker opened;
+    wuxc::Primitives::FlyoutBase::Closed_revoker closed;
 };
 std::unique_ptr<PanelState> g_panel;
 uint64_t g_panelClosedAt = 0;
@@ -2718,6 +2739,8 @@ void ClosePanel() {
     g_panelClosedAt = GetTickCount64();
     HoldTaskbar(nullptr);
     ReleaseHandlers();
+    panel->opened.revoke();
+    panel->closed.revoke();
     try {
         if (panel->flyout) panel->flyout.Hide();
     } catch (...) {
@@ -2760,8 +2783,8 @@ void TogglePanel(Widget& w) {
     p.flyout.Content(p.bubble);
     p.flyout.ShouldConstrainToRootBounds(false);
     p.flyout.ShowMode(wuxc::Primitives::FlyoutShowMode::Standard);
-    p.flyout.Opened([](auto&&, auto&&) { AllowHostBackdrop(); });
-    p.flyout.Closed([](wf::IInspectable const& sender, auto&&) {
+    p.opened = p.flyout.Opened(winrt::auto_revoke, [](auto&&, auto&&) { AllowHostBackdrop(); });
+    p.closed = p.flyout.Closed(winrt::auto_revoke, [](wf::IInspectable const& sender, auto&&) {
         if (g_panel && g_panel->flyout == sender.try_as<wuxc::Flyout>()) {
             g_panel.reset();
             g_panelClosedAt = GetTickCount64();
@@ -2820,6 +2843,7 @@ void OnMonitors(std::vector<MonView> list, uint64_t readAt) {
 }
 
 winrt::Windows::System::DispatcherQueueTimer g_timer{nullptr}, g_prefsTimer{nullptr};
+winrt::Windows::System::DispatcherQueueTimer::Tick_revoker g_timerTick, g_idleTick, g_prefsTick;
 
 void Tick() {
     if (g_unloading) return;
@@ -2851,20 +2875,21 @@ void Start() {
     PlaceWidgets();
     g_timer = g_queue.CreateTimer();
     g_timer.Interval(std::chrono::seconds(5));
-    g_timer.Tick([](auto&&, auto&&) { Tick(); });
+    g_timerTick = g_timer.Tick(winrt::auto_revoke, [](auto&&, auto&&) { Tick(); });
     g_timer.Start();
     g_idleTimer = g_queue.CreateTimer();
-    g_idleTimer.Tick([](auto&&, auto&&) {
+    g_idleTick = g_idleTimer.Tick(winrt::auto_revoke, [](auto&&, auto&&) {
         if (!g_unloading) IdleTick();
     });
     SetIdleInterval();
     g_prefsTimer = g_queue.CreateTimer();
     g_prefsTimer.Interval(std::chrono::seconds(1));
-    g_prefsTimer.Tick([](auto&&, auto&&) { PollPrefs(); });
+    g_prefsTick = g_prefsTimer.Tick(winrt::auto_revoke, [](auto&&, auto&&) { PollPrefs(); });
     g_prefsTimer.Start();
 }
 
 void Stop() {
+    for (auto* tick : {&g_timerTick, &g_idleTick, &g_prefsTick}) tick->revoke();
     for (auto* timer : {&g_timer, &g_idleTimer, &g_prefsTimer}) {
         if (*timer) {
             timer->Stop();
@@ -2872,7 +2897,7 @@ void Stop() {
         }
     }
     ClosePanel();
-    for (auto& w : g_widgets) RemoveWidget(*w);
+    for (auto& w : g_widgets) DropWidget(*w);
     g_widgets.clear();
     DestroyFlyoutWindow();
     g_queue = nullptr;
