@@ -370,12 +370,19 @@ wuxm::SolidColorBrush Brush(uint32_t argb) {
     return wuxm::SolidColorBrush(winrt::Windows::UI::Color{BYTE(argb >> 24), BYTE(argb >> 16), BYTE(argb >> 8), BYTE(argb)});
 }
 
-// A Thickness boxed by XAML itself. box_value boxes this XAML struct in this DLL, and a
-// resource dictionary that keeps the box would release it after the DLL is unloaded.
+// A Thickness or CornerRadius boxed by XAML itself. box_value boxes these XAML structs in
+// this DLL, and a style or resource dictionary that keeps the box would release it after
+// the DLL is unloaded.
 wf::IInspectable XamlBox(wux::Thickness t) {
     wuxc::Border b;
     b.Padding(t);
     return b.GetValue(wuxc::Border::PaddingProperty());
+}
+
+wf::IInspectable XamlBox(wux::CornerRadius r) {
+    wuxc::Border b;
+    b.CornerRadius(r);
+    return b.GetValue(wuxc::Border::CornerRadiusProperty());
 }
 
 uint32_t WithAlpha(uint32_t argb, BYTE alpha) {
@@ -475,11 +482,15 @@ wux::FrameworkElement TaskbarElement(HWND hwnd) {
         if (host[1]) std__Ref_count_base__Decref_Original(host[1]);
         return nullptr;
     }
-    // 48:83EC 28 | sub rsp,28 ; 48:83C1 48 | add rcx,48 <- the element's offset in TaskbarHost
-    size_t offset = 0x10;
+    // 48:83EC 28 | sub rsp,28 ; 48:83C1 48 | add rcx,48 <- the element's offset in TaskbarHost.
+    // On any other prologue the offset is unknown, and AddRef on a guessed slot could crash
+    // explorer, so there is no element.
     const BYTE* b = (const BYTE*)TaskbarHost_FrameHeight_Original;
-    if (b[0] == 0x48 && b[1] == 0x83 && b[2] == 0xEC && b[4] == 0x48 && b[5] == 0x83 && b[6] == 0xC1 && b[7] <= 0x7F)
-        offset = b[7];
+    if (!(b[0] == 0x48 && b[1] == 0x83 && b[2] == 0xEC && b[4] == 0x48 && b[5] == 0x83 && b[6] == 0xC1 && b[7] <= 0x7F)) {
+        std__Ref_count_base__Decref_Original(host[1]);
+        return nullptr;
+    }
+    size_t offset = b[7];
     wux::FrameworkElement element{nullptr};
     winrt::copy_from_abi(element, *(void**)((BYTE*)host[0] + offset));
     std__Ref_count_base__Decref_Original(host[1]);
@@ -2725,10 +2736,10 @@ wux::Style BarePresenter() {
     auto set = [&](const wux::DependencyProperty& property, const wf::IInspectable& value) {
         setters.Append(wux::Setter(property, value));
     };
-    set(wuxc::Control::PaddingProperty(), box_value(wux::Thickness{}));
+    set(wuxc::Control::PaddingProperty(), XamlBox(wux::Thickness{}));
     set(wuxc::Control::BackgroundProperty(), Brush(0));
-    set(wuxc::Control::BorderThicknessProperty(), box_value(wux::Thickness{}));
-    set(wuxc::Control::CornerRadiusProperty(), box_value(wux::CornerRadius{}));
+    set(wuxc::Control::BorderThicknessProperty(), XamlBox(wux::Thickness{}));
+    set(wuxc::Control::CornerRadiusProperty(), XamlBox(wux::CornerRadius{}));
     set(wuxc::FlyoutPresenter::IsDefaultShadowEnabledProperty(), box_value(false));
     set(wux::FrameworkElement::MinWidthProperty(), box_value(0.0));
     set(wux::FrameworkElement::MinHeightProperty(), box_value(0.0));
@@ -2930,6 +2941,20 @@ void Wh_ModAfterInit() {
 
 void Wh_ModBeforeUninit() {
     Wh_Log(L">");
+    // Monitors dimmed while idle go back to their levels before anything stops: the next load
+    // would read the dim level as the normal one. The writes run before g_unloading is set,
+    // which makes the worker skip them; a monitor slow on DDC/CI gets a bounded wait.
+    bool wasDimmed = false;
+    RunOn(PrimaryTaskbar(), [&wasDimmed] {
+        wasDimmed = g_dimmed;
+        Undim();
+    });
+    if (wasDimmed) {
+        HWND worker = g_workerWnd;
+        DWORD_PTR result = 0;
+        if (!worker || !SendMessageTimeoutW(worker, kMsgWrite, 0, 0, SMTO_NORMAL | SMTO_ABORTIFHUNG, 2500, &result))
+            Wh_Log(L"dimmed monitors not restored before unloading");
+    }
     g_unloading = true;
     RunOn(PrimaryTaskbar(), Stop);
     if (g_subclassed) {
