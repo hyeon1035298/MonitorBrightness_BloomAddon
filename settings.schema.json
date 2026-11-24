@@ -250,12 +250,12 @@
           "field": "keyUp",
           "name": {
             "ko": "밝게",
-            "en": "Light",
-            "ja": "ライト",
-            "zh": "浅色"
+            "en": "Brighter",
+            "ja": "明るく",
+            "zh": "调亮"
           },
           "easy": {
-            "name": { "ko": "밝게", "en": "Light", "ja": "ライト", "zh": "浅色" },
+            "name": { "ko": "밝게", "en": "Brighter", "ja": "明るく", "zh": "调亮" },
             "about": {
               "ko": "누른 뒤 새 조합을 누르세요",
               "en": "Click and press a new key combination",
@@ -275,11 +275,11 @@
           "field": "keyDown",
           "name": {
             "ko": "어둡게",
-            "en": "Dim",
-            "ja": "暗くする",
-            "zh": "变暗"
+            "en": "Dimmer",
+            "ja": "暗く",
+            "zh": "调暗"
           },
-          "easy": { "name": { "ko": "어둡게", "en": "Dim", "ja": "暗くする", "zh": "变暗" }, "about": "" }
+          "easy": { "name": { "ko": "어둡게", "en": "Dimmer", "ja": "暗く", "zh": "调暗" }, "about": "" }
         },
         {
           "key": "keys.step",

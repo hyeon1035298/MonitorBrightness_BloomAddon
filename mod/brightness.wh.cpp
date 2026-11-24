@@ -2591,7 +2591,7 @@ wux::UIElement BuildSettings() {
         g_prefs.keyStep = v;
         SavePrefs();
     });
-    page.Children().Append(PanelOf({keyRow(kKeyUp, T(L"밝게", L"Light")), keyRow(kKeyDown, T(L"어둡게", L"Dim")),
+    page.Children().Append(PanelOf({keyRow(kKeyUp, T(L"밝게", L"Brighter")), keyRow(kKeyDown, T(L"어둡게", L"Dimmer")),
                                      OptionRow(nullptr, T(L"한 번에", L"Step size"), L"", {step})}));
 
     page.Children().Append(SectionHead(T(L"유휴 시 어둡게", L"Dim when idle")));
