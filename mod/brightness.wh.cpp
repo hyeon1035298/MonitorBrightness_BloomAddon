@@ -1346,8 +1346,8 @@ std::wstring Tip() {
         if (!tip.empty()) tip += L"\n";
         tip += Format(L"%s  %d %%", m.name.c_str(), m.value);
     }
-    if (tip.empty()) tip = g_scanned ? T(L"밝기를 바꿀 수 있는 모니터가 없습니다", L"No monitor whose brightness can be set")
-                                     : T(L"모니터를 찾는 중…", L"Looking for monitors…");
+    if (tip.empty()) tip = g_scanned ? T(L"밝기를 바꿀 수 있는 모니터가 없습니다", L"No monitors with adjustable brightness found")
+                                     : T(L"모니터를 찾는 중…", L"Searching for monitors…");
     return std::wstring(T(L"밝기", L"Brightness")) + L"\n" + tip;
 }
 
@@ -2305,7 +2305,7 @@ wux::FrameworkElement BuildMonitorRow(const Mon& m) {
                                24);
         more.root.Margin({0, 0, -4, 0});
         if (open) more.root.Background(Brush(Ink(c, 8)));
-        SetTip(more.root, T(L"대비와 전원", L"Contrast and power"));
+        SetTip(more.root, T(L"대비와 전원", L"Contrast & power"));
         chevron = more.root;
     }
     auto slider = MakeSlider(m.internal ? kGlyphLaptop : kGlyphMonitor, m.name, m.value, true, false, chevron,
@@ -2322,10 +2322,10 @@ wux::FrameworkElement BuildMonitorRow(const Mon& m) {
             p.contrasts[id] = contrast;
         }
         auto act = HStack(10);
-        auto off = MakeButton(Kind::kSolid, kGlyphPower, T(L"이 모니터 끄기", L"Turn this monitor off"), true,
+        auto off = MakeButton(Kind::kSolid, kGlyphPower, T(L"이 모니터 끄기", L"Turn off this monitor"), true,
                               [id] { ConfirmOff(id); });
         act.Children().Append(off.root);
-        act.Children().Append(Text(T(L"전원 버튼으로 다시 켭니다", L"Its power button turns it on"), 12, c.faint));
+        act.Children().Append(Text(T(L"전원 버튼으로 다시 켭니다", L"Use the monitor's power button to turn it back on"), 12, c.faint));
         more.Children().Append(act);
         row.Children().Append(more);
     }
@@ -2335,7 +2335,7 @@ wux::FrameworkElement BuildMonitorRow(const Mon& m) {
 std::wstring IdleFoot() {
     return g_prefs.idleOn ? Format(T(L"%d분 뒤 %d %%", L"%d %% after %d min"), g_korean ? g_prefs.idleMinutes : g_prefs.idleLevel,
                                    g_korean ? g_prefs.idleLevel : g_prefs.idleMinutes)
-                          : std::wstring(T(L"유휴 시 어둡게 꺼짐", L"Dim when idle is off"));
+                          : std::wstring(T(L"유휴 시 어둡게 꺼짐", L"Idle dimming off"));
 }
 
 wux::UIElement BuildMain() {
@@ -2354,11 +2354,11 @@ wux::UIElement BuildMain() {
     }
     if (rows.empty()) {
         auto empty = OptionRow(Glyph(kGlyphMonitor, 14, c.muted), L"",
-                               !g_scanned ? T(L"모니터를 찾는 중…", L"Looking for monitors…")
+                               !g_scanned ? T(L"모니터를 찾는 중…", L"Searching for monitors…")
                                : off.empty() ? T(L"보이게 둔 모니터가 없습니다. 설정에서 고릅니다.",
-                                                 L"No monitor is shown. Pick them in the settings.")
+                                                 L"No monitors are set to visible. Choose monitors in Settings.")
                                              : T(L"밝기를 바꿀 수 있는 모니터가 없습니다.",
-                                                 L"No monitor whose brightness can be set."),
+                                                 L"No monitors with adjustable brightness found."),
                                {});
         rows.push_back(empty);
     }
@@ -2383,7 +2383,7 @@ wux::UIElement BuildMain() {
                                       names.c_str()),
                     12, c.muted),
             1));
-        auto again = MakeButton(Kind::kSolid, nullptr, T(L"다시 찾기", L"Look again"), true, [] { RequestScan(); });
+        auto again = MakeButton(Kind::kSolid, nullptr, T(L"다시 찾기", L"Rescan"), true, [] { RequestScan(); });
         again.root.VerticalAlignment(wux::VerticalAlignment::Center);
         line.Children().Append(InColumn(again.root, 2));
         notice.Child(line);
@@ -2452,7 +2452,7 @@ wuxc::UserControl HotKeyField(int which) {
         caret.Width(1.5);
         caret.Height(14);
         row.Children().Append(caret);
-        row.Children().Append(Text(T(L"키를 누르십시오", L"Press the keys"), 12, c.faint));
+        row.Children().Append(Text(T(L"키를 누르십시오", L"Press keys"), 12, c.faint));
     } else if (key.vk) {
         for (auto& part : KeyParts(key)) row.Children().Append(KeyCap(part));
     } else {
@@ -2542,11 +2542,11 @@ wux::UIElement BuildSettings() {
         g_prefs.wheelStep = v;
         SavePrefs();
     });
-    page.Children().Append(PanelOf({OptionRow(nullptr, T(L"알약 숫자", L"Number on the taskbar"), L"", {number.root}),
-                                     OptionRow(nullptr, T(L"휠 한 칸", L"One wheel notch"), L"", {wheel})}));
+    page.Children().Append(PanelOf({OptionRow(nullptr, T(L"알약 숫자", L"Pill number"), L"", {number.root}),
+                                     OptionRow(nullptr, T(L"휠 한 칸", L"Wheel step"), L"", {wheel})}));
 
     if (!g_mons.empty()) {
-        page.Children().Append(SectionHead(T(L"범위 맞추기", L"Ranges")));
+        page.Children().Append(SectionHead(T(L"범위 맞추기", L"Brightness range")));
         std::vector<wux::FrameworkElement> rows;
         for (auto& m : g_mons) {
             std::wstring id = m.id;
@@ -2572,7 +2572,7 @@ wux::UIElement BuildSettings() {
                 PrefsChanged();
                 ShowPage(Page::kSettings);
             });
-            SetTip(eye.root, mp.hidden ? T(L"창에 보이기", L"Show in the window") : T(L"창에서 숨기기", L"Hide from the window"));
+            SetTip(eye.root, mp.hidden ? T(L"창에 보이기", L"Show in window") : T(L"창에서 숨기기", L"Hide from window"));
             auto lead = Glyph(m.internal ? kGlyphLaptop : kGlyphMonitor, 14, c.muted);
             auto row = OptionRow(lead, m.name, m.ok ? L"" : T(L"DDC/CI 꺼짐", L"DDC/CI off"), {range, eye.root});
             if (mp.hidden) row.Opacity(0.6);
@@ -2581,18 +2581,18 @@ wux::UIElement BuildSettings() {
         page.Children().Append(PanelOf(rows));
     }
 
-    page.Children().Append(SectionHead(T(L"단축키", L"Hotkeys")));
+    page.Children().Append(SectionHead(T(L"단축키", L"Shortcuts")));
     auto keyRow = [&](int which, PCWSTR title) {
         bool busy = g_keyBusy[which - 1];
-        return OptionRow(nullptr, title, busy ? T(L"다른 프로그램이 사용 중", L"In use by another program") : L"",
+        return OptionRow(nullptr, title, busy ? T(L"다른 프로그램이 사용 중", L"Used by another app") : L"",
                          {HotKeyField(which)});
     };
     auto step = NumberBox(g_prefs.keyStep, 1, 50, L"%", [](int v) {
         g_prefs.keyStep = v;
         SavePrefs();
     });
-    page.Children().Append(PanelOf({keyRow(kKeyUp, T(L"밝게", L"Brighter")), keyRow(kKeyDown, T(L"어둡게", L"Dimmer")),
-                                     OptionRow(nullptr, T(L"한 번에", L"Per press"), L"", {step})}));
+    page.Children().Append(PanelOf({keyRow(kKeyUp, T(L"밝게", L"Light")), keyRow(kKeyDown, T(L"어둡게", L"Dim")),
+                                     OptionRow(nullptr, T(L"한 번에", L"Step size"), L"", {step})}));
 
     page.Children().Append(SectionHead(T(L"유휴 시 어둡게", L"Dim when idle")));
     auto idleSwitch = MakeSwitch(g_prefs.idleOn, [](bool on) {
@@ -2609,13 +2609,13 @@ wux::UIElement BuildSettings() {
         SavePrefs();
     });
     page.Children().Append(PanelOf({
-        OptionRow(nullptr, T(L"쓰기", L"Use it"), T(L"입력이 오면 원래 밝기로 돌아갑니다", L"Any input brings the brightness back"),
+        OptionRow(nullptr, T(L"쓰기", L"Enable"), T(L"입력이 오면 원래 밝기로 돌아갑니다", L"Restores original brightness on input"),
                   {idleSwitch}),
-        OptionRow(nullptr, T(L"기다리는 시간", L"After"), L"", {minutes}),
-        OptionRow(nullptr, T(L"어둡게 할 밝기", L"Dim to"), L"", {level}),
+        OptionRow(nullptr, T(L"기다리는 시간", L"Wait time"), L"", {minutes}),
+        OptionRow(nullptr, T(L"어둡게 할 밝기", L"Dimmed brightness"), L"", {level}),
         OptionRow(nullptr, L"",
                   T(L"동영상처럼 화면을 켜 두는 프로그램이 있으면 어둡게 하지 않습니다.",
-                    L"Nothing dims while a program keeps the screen on, such as a video."),
+                    L"Does not dim while an app like a video player is keeping the screen awake."),
                   {}),
     }));
     return Scrolled(page, 520);
@@ -2632,13 +2632,13 @@ wux::UIElement BuildHead(Page page) {
         auto title = Text(T(L"밝기", L"Brightness"), 13, c.fg, 600);
         title.Margin({6, 0, 0, 0});
         row.Children().Append(title);
-        auto link = MakeIconToggle(kGlyphLink, g_prefs.link, T(L"모두 함께", L"All together"), [](bool on) {
+        auto link = MakeIconToggle(kGlyphLink, g_prefs.link, T(L"모두 함께", L"Link all"), [](bool on) {
             g_prefs.link = on;
             SavePrefs();
         });
         row.Children().Append(InColumn(link, 1));
         auto screenOff = MakeButton(Kind::kGhost, kGlyphPower, L"", false, [] { ConfirmOff(L""); });
-        SetTip(screenOff.root, T(L"화면 끄기", L"Turn the screens off"));
+        SetTip(screenOff.root, T(L"화면 끄기", L"Turn Off Display"));
         row.Children().Append(InColumn(screenOff.root, 2));
         auto gear = MakeButton(Kind::kGhost, kGlyphSettings, L"", false, [] { ShowPage(Page::kSettings); });
         SetTip(gear.root, T(L"설정", L"Settings"));
@@ -2658,9 +2658,9 @@ wux::UIElement BuildHead(Page page) {
     });
     back.root.VerticalAlignment(wux::VerticalAlignment::Center);
     row.Children().Append(back.root);
-    row.Children().Append(InColumn(Text(page == Page::kSettings ? T(L"밝기 설정", L"Brightness settings")
-                                                                : g_panel->offId.empty() ? T(L"화면 끄기", L"Turn the screens off")
-                                                                 : T(L"이 모니터 끄기", L"Turn this monitor off"),
+    row.Children().Append(InColumn(Text(page == Page::kSettings ? T(L"밝기 설정", L"Brightness Settings")
+                                                                : g_panel->offId.empty() ? T(L"화면 끄기", L"Turn Off Display")
+                                                                 : T(L"이 모니터 끄기", L"Turn off this monitor"),
                                         13, c.fg, 600),
                                    1));
     return row;
@@ -2674,11 +2674,11 @@ wux::UIElement BuildConfirmOff() {
         if (m.id == id) name = m.name;
     auto page = VStack(0);
     auto ask = PanelOf({OptionRow(
-        Glyph(kGlyphPower, 14, c.muted), T(L"정말 끄시겠어요?", L"Turn it off?"),
+        Glyph(kGlyphPower, 14, c.muted), T(L"정말 끄시겠어요?", L"Turn off now?"),
         id.empty() ? T(L"모든 모니터 화면을 끕니다. 마우스나 키보드를 쓰면 다시 켜집니다.",
-                       L"Every monitor goes dark. The mouse or keyboard turns them back on.")
+                       L"Turns off all monitor screens. Move the mouse or press a key to wake them.")
         : g_korean ? Format(L"%s 화면을 끕니다. 모니터의 전원 버튼으로 다시 켭니다.", name.c_str())
-                   : Format(L"%s goes off. Its power button turns it back on.", name.c_str()),
+                   : Format(L"Turns off %s. Use the monitor's power button to turn it back on.", name.c_str()),
         {})});
     ask.Margin({0, 8, 0, 0});
     page.Children().Append(ask);
