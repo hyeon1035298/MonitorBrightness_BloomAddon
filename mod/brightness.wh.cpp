@@ -514,15 +514,73 @@ wux::FrameworkElement FindDescendant(const wux::FrameworkElement& e, F&& visit, 
     return nullptr;
 }
 
-// The tray's horizontal panel: icons, then the clock (NotificationCenterButton).
-wuxc::StackPanel TrayPanel(HWND hwnd) {
+// The tray's panel: icons, then the clock (NotificationCenterButton). It is a StackPanel on
+// the Windows builds whose taskbar can stand at a side and a Grid with a column for each
+// part on the ones before. Null for anything else: its layout is not known here.
+wuxc::Panel TrayPanel(HWND hwnd) {
     auto element = TaskbarElement(hwnd);
     auto root = element ? element.XamlRoot() : nullptr;
     auto content = root ? root.Content().try_as<wux::FrameworkElement>() : nullptr;
     auto frame = FindDescendant(
         content, [](auto& e) { return winrt::get_class_name(e) == L"SystemTray.SystemTrayFrame"; }, 8);
-    auto grid = FindDescendant(frame, [](auto& e) { return e.Name() == L"SystemTrayFrameGrid"; }, 2);
-    return grid ? grid.try_as<wuxc::StackPanel>() : nullptr;
+    auto panel = FindDescendant(frame, [](auto& e) { return e.Name() == L"SystemTrayFrameGrid"; }, 2);
+    if (!panel) return nullptr;
+    auto grid = panel.try_as<wuxc::Grid>();
+    if (panel.try_as<wuxc::StackPanel>() || (grid && grid.ColumnDefinitions().Size() > 0))
+        return panel.try_as<wuxc::Panel>();
+    static bool logged = false;
+    if (!std::exchange(logged, true)) Wh_Log(L"unsupported tray panel %s", winrt::get_class_name(panel).c_str());
+    return nullptr;
+}
+
+// As a column is made (`by` 1) or taken (`by` -1) at `column` of a Grid: the children from
+// there on move with it, and one lying across it grows or shrinks.
+void ShiftColumns(const wuxc::Grid& grid, int column, int by) {
+    for (auto child : grid.Children()) {
+        auto e = child.try_as<wux::FrameworkElement>();
+        if (!e) continue;
+        int start = wuxc::Grid::GetColumn(e), span = wuxc::Grid::GetColumnSpan(e);
+        if (by > 0 ? start >= column : start > column)
+            wuxc::Grid::SetColumn(e, start + by);
+        else if (start < column && start + span > column)
+            wuxc::Grid::SetColumnSpan(e, std::max(1, span + by));
+    }
+}
+
+// Puts `element` in the tray right before its child at `index`, or at the end past the
+// last one. A StackPanel takes it by order; a Grid gets a column of the element's own
+// width there.
+void InsertInTray(const wuxc::Panel& tray, uint32_t index, const wux::FrameworkElement& element) {
+    auto children = tray.Children();
+    auto grid = tray.try_as<wuxc::Grid>();
+    if (!grid) {
+        children.InsertAt(std::min(index, children.Size()), element);
+        return;
+    }
+    auto columns = grid.ColumnDefinitions();
+    auto before = index < children.Size() ? children.GetAt(index).try_as<wux::FrameworkElement>() : nullptr;
+    int column = before ? std::clamp(wuxc::Grid::GetColumn(before), 0, int(columns.Size())) : int(columns.Size());
+    wuxc::ColumnDefinition definition;
+    definition.Width(wux::GridLengthHelper::Auto());
+    columns.InsertAt(column, definition);
+    ShiftColumns(grid, column, 1);
+    wuxc::Grid::SetColumn(element, column);
+    children.Append(element);
+}
+
+// Takes `element` out of the tray; a Grid loses the column made for it.
+void TakeFromTray(const wux::FrameworkElement& element) {
+    auto tray = Parent(element).try_as<wuxc::Panel>();
+    uint32_t index;
+    if (!tray || !tray.Children().IndexOf(element, index)) return;
+    tray.Children().RemoveAt(index);
+    auto grid = tray.try_as<wuxc::Grid>();
+    if (!grid) return;
+    int column = wuxc::Grid::GetColumn(element);
+    auto columns = grid.ColumnDefinitions();
+    if (column < 0 || column >= int(columns.Size())) return;
+    columns.RemoveAt(column);
+    ShiftColumns(grid, column, -1);
 }
 
 // Other Bloom add-ons find this widget by name; the memory-clean one sits right of it.
@@ -530,7 +588,7 @@ constexpr PCWSTR kWidgetName = L"BloomAddon.brightness";
 constexpr PCWSTR kMemoryWidgetName = L"BloomAddon.memory-clean";
 
 // Right before the memory-clean widget, else right before the clock.
-uint32_t InsertIndex(const wuxc::StackPanel& tray) {
+uint32_t InsertIndex(const wuxc::Panel& tray) {
     auto children = tray.Children();
     uint32_t clock = children.Size();
     for (uint32_t i = 0; i < children.Size(); i++) {
@@ -1298,7 +1356,7 @@ void TogglePanel(Widget& w);
 // the same way, so the two are kept alike.
 
 // Height and corners of the tray's own icons, so the hover box lines up with theirs.
-bool FitToTray(Widget& w, const wuxc::StackPanel& tray) {
+bool FitToTray(Widget& w, const wuxc::Panel& tray) {
     auto icon = FindDescendant(
         tray,
         [](auto& e) {
@@ -1424,11 +1482,7 @@ std::unique_ptr<Widget> BuildWidget(HWND taskbar) {
 }
 
 void RemoveWidget(Widget& w) {
-    if (!w.root) return;
-    if (auto panel = Parent(w.root).try_as<wuxc::Panel>()) {
-        uint32_t index;
-        if (panel.Children().IndexOf(w.root, index)) panel.Children().RemoveAt(index);
-    }
+    if (w.root) TakeFromTray(w.root);
 }
 
 // For a widget going for good: its handlers first, then off the tray.
@@ -1453,7 +1507,7 @@ void PlaceWidgets() {
         auto it = std::ranges::find_if(g_widgets, [&](auto& w) { return w->taskbar == hwnd; });
         if (it != g_widgets.end() && Parent((*it)->root) && (*it)->root.IsLoaded()) {
             if (!(*it)->fitted)
-                if (auto tray = Parent((*it)->root).try_as<wuxc::StackPanel>()) (*it)->fitted = FitToTray(**it, tray);
+                if (auto tray = Parent((*it)->root).try_as<wuxc::Panel>()) (*it)->fitted = FitToTray(**it, tray);
             continue;
         }
         auto tray = TrayPanel(hwnd);
@@ -1467,8 +1521,8 @@ void PlaceWidgets() {
         // A widget of an earlier load of this mod would be a stranger now.
         for (uint32_t i = tray.Children().Size(); i-- > 0;)
             if (auto e = tray.Children().GetAt(i).try_as<wux::FrameworkElement>(); e && e.Name() == kWidgetName)
-                tray.Children().RemoveAt(i);
-        tray.Children().InsertAt(InsertIndex(tray), (*it)->root);
+                TakeFromTray(e);
+        InsertInTray(tray, InsertIndex(tray), (*it)->root);
         (*it)->fitted = FitToTray(**it, tray);
         PaintWidget(**it, true);
         Wh_Log(L"widget placed on %p", hwnd);
