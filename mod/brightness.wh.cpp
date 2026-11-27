@@ -1174,6 +1174,7 @@ void SetValue(Mon& m, int value) {
 void PaintWidgets(bool force = false);
 void RefreshMain();
 void Undim();
+void FollowChange(const Mon& m);
 
 // Wheel notches from a delta: a fine wheel or a touchpad sends parts of one.
 int Notches(int& carry, int delta) {
@@ -1187,7 +1188,9 @@ int Notches(int& carry, int delta) {
 void ChangeOne(const std::wstring& id, int value) {
     Undim();
     for (auto& m : g_mons) {
-        if (m.id == id || (g_prefs.link && Shown(m))) SetValue(m, value);
+        if (m.id != id && !(g_prefs.link && Shown(m))) continue;
+        SetValue(m, value);
+        FollowChange(m);
     }
     PaintWidgets();
     RefreshMain();
@@ -1196,8 +1199,11 @@ void ChangeOne(const std::wstring& id, int value) {
 // The widget's wheel and the hotkeys: every shown monitor by the same step.
 void StepAll(int delta) {
     Undim();
-    for (auto& m : g_mons)
-        if (Shown(m) && m.value >= 0) SetValue(m, m.value + delta);
+    for (auto& m : g_mons) {
+        if (!Shown(m) || m.value < 0) continue;
+        SetValue(m, m.value + delta);
+        FollowChange(m);
+    }
     PaintWidgets();
     RefreshMain();
 }
@@ -2258,8 +2264,15 @@ std::vector<std::wstring> KeyParts(const HotKey& k) {
 
 winrt::Windows::System::DispatcherQueueTimer g_idleTimer{nullptr};
 bool g_dimmed = false;
-DWORD g_dimInputAt = 0;               // GetLastInputInfo's time when the dim began
-std::map<std::wstring, int> g_dimFrom;  // values to go back to
+DWORD g_dimInputAt = 0;  // GetLastInputInfo's time when the dim began
+// The values to go back to, by monitor. One stays after the dim has ended until its monitor is
+// read at that value: a monitor that takes no write when the input comes (its screen off, or
+// just back on) is written again once it answers. They are in dim.json for as long, so a dim
+// that a restart of Windows or of explorer cut short is undone at the next load.
+std::map<std::wstring, int> g_dimFrom;
+uint64_t g_backUntil = 0;  // GetTickCount64 until which monitors not back yet are read each second
+bool g_backRead = false;   // a read was asked for and has not arrived
+constexpr uint64_t kBackMs = 30000;
 
 bool DisplayRequired() {
     EXECUTION_STATE state = 0;
@@ -2267,10 +2280,42 @@ bool DisplayRequired() {
            (state & ES_DISPLAY_REQUIRED);
 }
 
+std::wstring DimPath() {
+    return DataDir() + L"\\dim.json";
+}
+
+// dim.json holds g_dimFrom, and is not there when that is empty.
+void SaveDim() {
+    if (g_dimFrom.empty()) {
+        DeleteFileW(DimPath().c_str());
+        return;
+    }
+    wdj::JsonObject obj;
+    for (auto& [id, value] : g_dimFrom) obj.SetNamedValue(id, wdj::JsonValue::CreateNumberValue(value));
+    SHCreateDirectoryExW(nullptr, DataDir().c_str(), nullptr);
+    if (!WriteText(DimPath(), std::wstring(obj.Stringify()))) Wh_Log(L"dim.json not written: %u", GetLastError());
+}
+
+// At the start: the values a dim left behind when the last run ended, to go back to now.
+void LoadDim() {
+    auto o = ParseObject(ReadText(DimPath()));
+    if (!o) return;
+    for (auto const& entry : *o) {
+        if (entry.Value().ValueType() != wdj::JsonValueType::Number || g_dimFrom.size() >= kMaxMonitorPrefs) continue;
+        g_dimFrom[std::wstring(entry.Key())] = std::clamp(int(entry.Value().GetNumber()), 0, 100);
+    }
+    Wh_Log(L"%d monitors left dimmed by the last run", int(g_dimFrom.size()));
+    g_backUntil = GetTickCount64() + kBackMs;
+    if (g_dimFrom.empty()) SaveDim();  // a file with nothing to go by
+}
+
+// Each second while dimmed or while monitors are on their way back, else every half minute
+// while the dimming is on.
 void SetIdleInterval() {
     if (!g_idleTimer) return;
-    if (g_dimmed || g_prefs.idleOn) {
-        g_idleTimer.Interval(std::chrono::seconds(g_dimmed ? 1 : 30));
+    bool busy = !g_dimFrom.empty();
+    if (busy || g_prefs.idleOn) {
+        g_idleTimer.Interval(std::chrono::seconds(busy ? 1 : 30));
         g_idleTimer.Start();
     } else {
         g_idleTimer.Stop();
@@ -2280,11 +2325,35 @@ void SetIdleInterval() {
 // Back to the values from before the dim; a key or wheel that wakes it acts on those.
 void Undim() {
     if (!g_dimmed) return;
-    auto from = std::move(g_dimFrom);
     g_dimmed = false;
-    g_dimFrom.clear();
+    g_backUntil = GetTickCount64() + kBackMs;
     for (auto& m : g_mons)
-        if (auto it = from.find(m.id); it != from.end() && m.ok) SetValue(m, it->second);
+        if (auto it = g_dimFrom.find(m.id); it != g_dimFrom.end() && m.ok) SetValue(m, it->second);
+}
+
+// A value set by hand is the one a monitor on its way back from a dim goes to.
+void FollowChange(const Mon& m) {
+    if (auto it = g_dimFrom.find(m.id); it != g_dimFrom.end()) it->second = m.value;
+}
+
+// A read of the monitors arrived. Of those on their way back from a dim, one read at its value
+// is back; one read at another value after the last write to it is written again.
+void BackFromDim(uint64_t readAt) {
+    g_backRead = false;
+    if (g_dimmed || g_dimFrom.empty()) return;
+    bool back = false;
+    for (auto& m : g_mons) {
+        auto it = g_dimFrom.find(m.id);
+        if (it == g_dimFrom.end() || !m.ok || m.changedAt > readAt) continue;
+        if (m.hw == ToHw(m, it->second)) {
+            g_dimFrom.erase(it);
+            back = true;
+        } else {
+            SetValue(m, it->second);
+        }
+    }
+    if (!back) return;
+    SaveDim();
     SetIdleInterval();
 }
 
@@ -2298,6 +2367,17 @@ void IdleTick() {
         RefreshMain();
         return;
     }
+    if (!g_dimFrom.empty()) {
+        if (GetTickCount64() < g_backUntil) {
+            if (!std::exchange(g_backRead, true)) RequestScan();
+            return;
+        }
+        Wh_Log(L"%d monitors not back from the dim", int(g_dimFrom.size()));
+        g_dimFrom.clear();
+        g_backRead = false;
+        SaveDim();
+        SetIdleInterval();
+    }
     if (!g_prefs.idleOn || GetTickCount() - input.dwTime < DWORD(g_prefs.idleMinutes) * 60000 || DisplayRequired())
         return;
     for (auto& m : g_mons) {
@@ -2309,6 +2389,7 @@ void IdleTick() {
     g_dimmed = true;
     g_dimInputAt = input.dwTime;
     Wh_Log(L"dimmed after %u s idle", (GetTickCount() - input.dwTime) / 1000);
+    SaveDim();
     SetIdleInterval();
     PaintWidgets();
 }
@@ -2931,6 +3012,7 @@ void OnMonitors(std::vector<MonView> list, uint64_t readAt) {
     }
     if (named) SavePrefs();
     Wh_Log(L"%d monitors", int(g_mons.size()));
+    BackFromDim(readAt);
     PaintWidgets(true);
     RefreshMain();
 }
@@ -2963,6 +3045,7 @@ void Start() {
         return;
     }
     LoadPrefs();
+    LoadDim();
     g_look = ReadLook();
     CreateFlyoutWindow();
     PlaceWidgets();
@@ -3015,9 +3098,10 @@ void Wh_ModAfterInit() {
 
 void Wh_ModBeforeUninit() {
     Wh_Log(L">");
-    // Monitors dimmed while idle go back to their levels before anything stops: the next load
-    // would read the dim level as the normal one. The writes run before g_unloading is set,
-    // which makes the worker skip them; a monitor slow on DDC/CI gets a bounded wait.
+    // Monitors dimmed while idle go back to their levels before anything stops: no load may
+    // follow, and one that does only finishes from dim.json what did not get through here. The
+    // writes run before g_unloading is set, which makes the worker skip them; a monitor slow on
+    // DDC/CI gets a bounded wait.
     bool wasDimmed = false;
     RunOn(PrimaryTaskbar(), [&wasDimmed] {
         wasDimmed = g_dimmed;
