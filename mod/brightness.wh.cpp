@@ -1364,6 +1364,7 @@ struct Widget {
     int shown = -2;
     const Palette* palette = nullptr;
     bool hover = false, fitted = false;
+    bool column = false;  // fitted to a tray that is a column
     int wheel = 0;  // part of a notch not yet used
     // XAML may keep the root after it leaves the tray; its handlers live in this DLL.
     wux::UIElement::PointerEntered_revoker entered;
@@ -1379,8 +1380,24 @@ void TogglePanel(Widget& w);
 // widget's size and hover, and where the window opens. The memory-clean add-on behaves
 // the same way, so the two are kept alike.
 
-// Height and corners of the tray's own icons, so the hover box lines up with theirs.
+// A tray that stacks its parts in a column, as the taskbar's does at a screen's side.
+bool InColumn(const wux::FrameworkElement& tray) {
+    auto stack = tray.try_as<wuxc::StackPanel>();
+    return stack && stack.Orientation() == wuxc::Orientation::Vertical;
+}
+
+// In a column every add-on's widget is one cell of this, as each memory-clean icon is,
+// whatever the tray's own icons measure there (it changes as the taskbar turns), so the
+// icons stand on one pitch.
+constexpr double kColumnCell = 32;
+
+// In a row, height and corners of the tray's own icons, so the hover box lines up with theirs.
 bool FitToTray(Widget& w, const wuxc::Panel& tray) {
+    w.column = InColumn(tray);
+    if (w.column) {
+        w.root.Height(kColumnCell);
+        return true;
+    }
     auto icon = FindDescendant(
         tray,
         [](auto& e) {
@@ -1568,8 +1585,10 @@ void PlaceWidgets() {
     for (HWND hwnd : taskbars) {
         auto it = std::ranges::find_if(g_widgets, [&](auto& w) { return w->taskbar == hwnd; });
         if (it != g_widgets.end() && Parent((*it)->root) && (*it)->root.IsLoaded()) {
-            if (!(*it)->fitted)
-                if (auto tray = Parent((*it)->root).try_as<wuxc::Panel>()) (*it)->fitted = FitToTray(**it, tray);
+            // Fitted again when the taskbar turned between a row and a column.
+            if (auto tray = Parent((*it)->root).try_as<wuxc::Panel>();
+                tray && (!(*it)->fitted || InColumn(tray) != (*it)->column))
+                (*it)->fitted = FitToTray(**it, tray);
             continue;
         }
         auto tray = TrayPanel(hwnd);
