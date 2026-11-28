@@ -603,32 +603,50 @@ uint32_t InsertIndex(const wuxc::Panel& tray) {
     return clock;
 }
 
-// Whether the taskbar is at its monitor's top. An auto-hidden one keeps only a sliver on its own
+// Where the taskbar stands on its monitor. An auto-hidden one keeps only a sliver on its own
 // monitor and reaches into a monitor stacked beside it, which MonitorFromWindow would pick: its
-// monitor is the one it covers least (a shown one covers one alone).
-bool TaskbarOnTop(HWND taskbar) {
-    struct Look {
-        RECT bar;
-        RECT monitor;
-        LONG least;
-    } look{{}, {}, LONG_MAX};
-    if (!GetWindowRect(taskbar, &look.bar)) return false;
+// monitor is the one it covers least (a shown one covers one alone). work is that monitor's work area.
+struct TaskbarLook {
+    RECT bar;
+    RECT monitor;
+    RECT work;
+    LONG least;
+};
+
+TaskbarLook LookAtTaskbar(HWND taskbar) {
+    TaskbarLook look{{}, {}, {}, LONG_MAX};
+    if (!GetWindowRect(taskbar, &look.bar)) return look;
     EnumDisplayMonitors(
         nullptr, nullptr,
-        [](HMONITOR, HDC, LPRECT rc, LPARAM param) -> BOOL {
-            auto& l = *(Look*)param;
+        [](HMONITOR hm, HDC, LPRECT rc, LPARAM param) -> BOOL {
+            auto& l = *(TaskbarLook*)param;
             RECT part;
             if (IntersectRect(&part, &l.bar, rc)) {
                 LONG area = (part.right - part.left) * (part.bottom - part.top);
                 if (area < l.least) {
                     l.least = area;
                     l.monitor = *rc;
+                    MONITORINFO mi{sizeof(mi)};
+                    l.work = GetMonitorInfoW(hm, &mi) ? mi.rcWork : *rc;
                 }
             }
             return TRUE;
         },
         (LPARAM)&look);
+    return look;
+}
+
+// Whether the taskbar is at its monitor's top.
+bool TaskbarOnTop(HWND taskbar) {
+    auto look = LookAtTaskbar(taskbar);
     return look.least != LONG_MAX && look.bar.top + look.bar.bottom < look.monitor.top + look.monitor.bottom;
+}
+
+// -1 when the taskbar stands along its monitor's left edge, 1 along its right edge, 0 when it
+// lies along the top or bottom (Windows' own always does).
+int TaskbarSide(const TaskbarLook& look) {
+    if (look.least == LONG_MAX || look.bar.right - look.bar.left >= look.bar.bottom - look.bar.top) return 0;
+    return look.bar.left + look.bar.right < look.monitor.left + look.monitor.right ? -1 : 1;
 }
 
 // ---- running work on the taskbar thread ---------------------------------------
@@ -1388,11 +1406,49 @@ uint32_t TrayHover(const wux::FrameworkElement& e) {
     return e.ActualTheme() == wux::ElementTheme::Light ? 0x09000000 : 0x0FFFFFFF;
 }
 
+// Opens the window on the screen's side of a taskbar along the monitor's left (side -1) or right
+// (side 1) edge, kGap clear of the taskbar's edge as for a taskbar along the top or bottom.
+// Along the taskbar it is centred on the widget but kept kGap inside the monitor's work area.
+void ShowFlyoutBeside(Widget& w, const wuxc::Flyout& flyout, const TaskbarLook& look, int side) {
+    constexpr double kGap = 8;
+    double toEdge = 0, shift = 0;
+    try {
+        if (auto root = w.root.XamlRoot()) {
+            auto box = w.root.TransformToVisual(nullptr).TransformBounds(
+                {0, 0, float(w.root.ActualWidth()), float(w.root.ActualHeight())});
+            toEdge = std::max(0.0, side < 0 ? root.Size().Width - (box.X + box.Width) : double(box.X));
+            double scale = root.RasterizationScale();
+            auto content = flyout.Content().try_as<wux::FrameworkElement>();
+            if (content && scale > 0) {
+                content.Measure({float(content.Width()), INFINITY});
+                double center = look.bar.top / scale + box.Y + box.Height / 2,
+                       half = content.DesiredSize().Height / 2;
+                double top = look.work.top / scale + kGap, bottom = look.work.bottom / scale - kGap;
+                if (center + half > bottom) shift = bottom - (center + half);
+                if (center + shift - half < top) shift = top - (center - half);
+            }
+        }
+    } catch (...) {
+    }
+    wuxc::Primitives::FlyoutShowOptions options;
+    options.Placement(side < 0 ? wuxc::Primitives::FlyoutPlacementMode::Right
+                               : wuxc::Primitives::FlyoutPlacementMode::Left);
+    options.Position(wf::IReference<wf::Point>(wf::Point{
+        float(side < 0 ? w.root.ActualWidth() + toEdge + kGap : -(toEdge + kGap)),
+        float(w.root.ActualHeight() / 2 + shift)}));
+    flyout.ShowAt(w.root, options);
+}
+
 // Opens the window over the widget, or under it when the taskbar is at the top, kGap clear
 // of the taskbar's edge rather than of the widget in its middle: the widget's distance to
 // that edge is measured in the taskbar's XAML root. Sideways it is centred on the widget but
 // kept kGap inside the monitor, as Windows' tray windows are near the screen's corner.
 void ShowFlyout(Widget& w, const wuxc::Flyout& flyout) {
+    auto look = LookAtTaskbar(w.taskbar);
+    if (int side = TaskbarSide(look)) {
+        ShowFlyoutBeside(w, flyout, look, side);
+        return;
+    }
     constexpr double kGap = 8;
     bool below = TaskbarOnTop(w.taskbar);
     double toEdge = 0, shift = 0;
